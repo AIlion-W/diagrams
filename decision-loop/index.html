@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>人机协作决策闭环</title>
+<meta name="description" content="用 AI 提高判断力与决策力：原始信息 → 决策事实 → 假设推断 → 结果回填 → 纠偏沉淀。">
+<style>
+:root{
+  --bg:#f7f6f2; --panel:#ffffff; --ink:#1d1d1b; --muted:#6b6a65; --line:#e3e1da;
+  --c1:#8a8578; --c1bg:#f0eee8;
+  --c2:#1f6f5c; --c2bg:#e4f2ed;
+  --human:#c0592b; --humanbg:#fbece4;
+  --agent:#3b5bdb; --agentbg:#e8edfd;
+  --c4:#7a4fbf; --c4bg:#f1eafb;
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.05);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141413; --panel:#1e1e1c; --ink:#ecebe6; --muted:#a09e96; --line:#33322e;
+    --c1:#b5b0a3; --c1bg:#2a2925;
+    --c2:#5cc2a6; --c2bg:#16302a;
+    --human:#f08a5d; --humanbg:#3a2218;
+    --agent:#8ea6ff; --agentbg:#1c2547;
+    --c4:#b893f2; --c4bg:#2b2140;
+    --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141413; --panel:#1e1e1c; --ink:#ecebe6; --muted:#a09e96; --line:#33322e;
+  --c1:#b5b0a3; --c1bg:#2a2925;
+  --c2:#5cc2a6; --c2bg:#16302a;
+  --human:#f08a5d; --humanbg:#3a2218;
+  --agent:#8ea6ff; --agentbg:#1c2547;
+  --c4:#b893f2; --c4bg:#2b2140;
+  --shadow:none;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:40px 16px 64px}
+header{margin-bottom:28px}
+.eyebrow{font-size:13px;letter-spacing:.08em;color:var(--muted)}
+h1{font-size:clamp(26px,4vw,38px);line-height:1.25;margin:6px 0 10px;font-weight:700}
+.lede{color:var(--muted);max-width:720px;margin:0}
+h2{font-size:20px;margin:48px 0 6px}
+.sub{color:var(--muted);margin:0 0 18px;font-size:14px}
+
+/* ---------- Main flow ---------- */
+.flow{display:grid;grid-template-columns:1fr 28px 1fr 28px 1.9fr 28px 1fr;align-items:stretch}
+.arrow{display:flex;align-items:center;justify-content:center;color:var(--muted)}
+.arrow svg{width:22px;height:22px}
+.node{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;border-top:4px solid var(--accent)}
+.node .num{font-size:12px;font-weight:700;color:var(--accent);letter-spacing:.06em}
+.node h3{margin:0;font-size:18px}
+.tag{display:inline-block;align-self:flex-start;font-size:12px;padding:2px 8px;border-radius:999px;background:var(--accentbg);color:var(--accent);font-weight:600}
+.node p{margin:0;font-size:14px;color:var(--muted)}
+.node ul{margin:0;padding-left:18px;font-size:14px;color:var(--muted)}
+.n1{--accent:var(--c1);--accentbg:var(--c1bg)}
+.n2{--accent:var(--c2);--accentbg:var(--c2bg)}
+.n3{--accent:var(--ink);--accentbg:var(--line)}
+.n4{--accent:var(--c4);--accentbg:var(--c4bg)}
+.lanes{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.lane{border-radius:10px;padding:12px;font-size:14px}
+.lane b{display:block;font-size:14px;margin-bottom:4px}
+.lane.h{background:var(--humanbg)} .lane.h b{color:var(--human)}
+.lane.a{background:var(--agentbg)} .lane.a b{color:var(--agent)}
+.lane .row{display:flex;gap:6px;align-items:baseline;color:var(--ink);opacity:.85}
+.lane .row span:first-child{font-size:12px;color:var(--muted);min-width:34px}
+.must{font-size:13px;border:1px dashed var(--line);border-radius:8px;padding:8px 10px;color:var(--ink)}
+
+/* loop back */
+.loopback{margin-top:4px}
+.loopback svg{width:100%;height:70px;display:block}
+.loopback .lbl{display:flex;justify-content:center;margin-top:-6px}
+.loopback .lbl span{background:var(--c4bg);color:var(--c4);font-weight:600;font-size:13px;padding:4px 12px;border-radius:999px}
+
+/* ---------- Calibration matrix ---------- */
+.matrix{display:grid;grid-template-columns:120px 1fr 1fr;gap:10px}
+.mh{font-size:13px;color:var(--muted);display:flex;align-items:center;justify-content:center;text-align:center;padding:6px}
+.mh b{color:var(--ink)}
+.cell{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;box-shadow:var(--shadow)}
+.cell .k{font-weight:700;font-size:15px;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+.cell p{margin:0;font-size:14px;color:var(--muted)}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.ok .dot{background:var(--c2)} .fix .dot{background:var(--human)} .agentgap .dot{background:var(--agent)} .both .dot{background:var(--c4)}
+.note{font-size:13px;color:var(--muted);margin-top:10px}
+
+/* ---------- Flywheel ---------- */
+.fly{display:grid;grid-template-columns:1fr 28px 1fr 28px 1fr;align-items:stretch}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:var(--shadow)}
+.box h4{margin:0 0 6px;font-size:16px}
+.box p{margin:0;font-size:14px;color:var(--muted)}
+.box.lib{border-color:var(--c4)}
+.stack{display:flex;gap:4px;margin-top:10px}
+.stack i{flex:1;height:20px;border-radius:4px;background:var(--c4bg);border:1px solid var(--c4);opacity:.5}
+.stack i:nth-child(n+4){opacity:.85}
+
+footer{margin-top:56px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:16px}
+
+.themebtn{position:fixed;top:14px;right:14px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px;cursor:pointer}
+
+@media (max-width:900px){
+  .flow,.fly{grid-template-columns:1fr}
+  .arrow{height:28px} .arrow svg{transform:rotate(90deg)}
+  .loopback svg{display:none}
+  .loopback .lbl{margin-top:12px}
+  .matrix{grid-template-columns:1fr 1fr}
+  .matrix .corner{display:none}
+  .matrix .rowh{grid-column:1/-1;justify-content:flex-start;padding:10px 0 0}
+}
+@media (max-width:520px){
+  .lanes{grid-template-columns:1fr}
+  .matrix{grid-template-columns:1fr}
+  .matrix .colh{display:none}
+}
+</style>
+</head>
+<body>
+<button class="themebtn" id="tb" aria-label="切换主题">◐ 主题</button>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">人机协作 · 判断力与决策力</div>
+    <h1>用 AI 校准判断：决策闭环架构</h1>
+    <p class="lede">每个决策都走完四步：原始信息 → 决策事实 → 假设推断 → 结果回填。人和 Agent 各自写下概率与依据，结果出来后对照，找出谁的思维模型需要修正。闭环积累得越多，Agent 给出的建议越贴近你的真实情况。</p>
+  </header>
+
+  <h2>一条完整链路</h2>
+  <p class="sub">四个模块，真假性质各不相同</p>
+
+  <div class="flow">
+    <div class="node n1">
+      <div class="num">01</div>
+      <h3>原始信息</h3>
+      <span class="tag">可真可假 · 不完整</span>
+      <p>我们已知、感知到、理解到的信息。</p>
+      <ul>
+        <li>信息本身可能是假的</li>
+        <li>对世界的感知和理解可能有偏差</li>
+        <li>已知信息往往不全面</li>
+      </ul>
+    </div>
+    <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h15M13 6l6 6-6 6"/></svg></div>
+    <div class="node n2">
+      <div class="num">02</div>
+      <h3>决策事实</h3>
+      <span class="tag">确定为真</span>
+      <p>基于原始信息做出的决定：我决定做某件事。</p>
+      <p>这是唯一确定为真的一环，因为决定是我亲自下的。</p>
+    </div>
+    <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h15M13 6l6 6-6 6"/></svg></div>
+    <div class="node n3">
+      <div class="num">03</div>
+      <h3>假设推断</h3>
+      <span class="tag">概率 + 依据</span>
+      <p>人和 Agent 都读取 01 和 02，各自对结果做出判断。</p>
+      <div class="lanes">
+        <div class="lane h">
+          <b>A · 人的判断</b>
+          <div class="row"><span>结论</span><span>会成还是会败</span></div>
+          <div class="row"><span>概率</span><span>多大把握</span></div>
+          <div class="row"><span>依据</span><span>我的经验与理由</span></div>
+        </div>
+        <div class="lane a">
+          <b>B · Agent 判断</b>
+          <div class="row"><span>结论</span><span>会成还是会败</span></div>
+          <div class="row"><span>概率</span><span>预测成功率</span></div>
+          <div class="row"><span>依据</span><span>全网数据 + 上下文</span></div>
+        </div>
+      </div>
+      <div class="must">✎ 双方的论据和判断依据都必须记录下来。没有依据，复盘时就无法定位错在哪里。</div>
+    </div>
+    <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h15M13 6l6 6-6 6"/></svg></div>
+    <div class="node n4">
+      <div class="num">04</div>
+      <h3>结果回填</h3>
+      <span class="tag">客观结果</span>
+      <p>一段时间后结果出来，把实际结果和复盘写回同一条记录。</p>
+      <p>拿结果分别对照 A、B 两份判断。</p>
+    </div>
+  </div>
+
+  <div class="loopback" aria-hidden="false">
+    <svg viewBox="0 0 1000 70" preserveAspectRatio="none" fill="none">
+      <defs><marker id="ah" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--c4)"/></marker></defs>
+      <path d="M915 0 V40 Q915 58 897 58 H103 Q85 58 85 40 V8" stroke="var(--c4)" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#ah)" vector-effect="non-scaling-stroke"/>
+    </svg>
+    <div class="lbl"><span>↺ 纠偏：修正思维模型，下一次决策带着新的认知进入</span></div>
+  </div>
+
+  <h2>结果出来后：怎么纠偏</h2>
+  <p class="sub">用实际结果分别检验人和 Agent 的判断，四种情况对应四种处理</p>
+
+  <div class="matrix">
+    <div class="mh corner"></div>
+    <div class="mh colh"><b>Agent 判断对</b></div>
+    <div class="mh colh"><b>Agent 判断错</b></div>
+
+    <div class="mh rowh"><b>我判断对</b></div>
+    <div class="cell ok">
+      <div class="k"><span class="dot"></span>双方一致，结果符合预期</div>
+      <p>思维模型有效，继续沿用。</p>
+    </div>
+    <div class="cell agentgap">
+      <div class="k"><span class="dot"></span>我对，Agent 错</div>
+      <p>记录 Agent 的盲区：它缺了哪些上下文，下次补给它。</p>
+    </div>
+
+    <div class="mh rowh"><b>我判断错</b></div>
+    <div class="cell fix">
+      <div class="k"><span class="dot"></span>我错，Agent 对</div>
+      <p>对照 Agent 的依据，修正自己的思维模型。</p>
+    </div>
+    <div class="cell both">
+      <div class="k"><span class="dot"></span>双方都错</div>
+      <p>回到 01 原始信息：信息是假的、不全，还是对世界的理解错了。</p>
+    </div>
+  </div>
+  <p class="note">核心信号：我认为能成但没成，说明我的思维模型错了，需要纠偏；我和 Agent 判断相反时，用结果对照，谁错修正谁。</p>
+
+  <h2>日积月累：决策库让 Agent 越来越懂你</h2>
+  <p class="sub">每条闭环都是一条带依据和结果的样本</p>
+
+  <div class="fly">
+    <div class="box">
+      <h4>一条条闭环</h4>
+      <p>信息、决策、双方概率与依据、实际结果、复盘，完整存成一条记录。</p>
+    </div>
+    <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h15M13 6l6 6-6 6"/></svg></div>
+    <div class="box lib">
+      <h4>个人决策库</h4>
+      <p>积累大量「判断 vs 结果」的对照，暴露你在哪类问题上常判断失准。</p>
+      <div class="stack"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    </div>
+    <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h15M13 6l6 6-6 6"/></svg></div>
+    <div class="box">
+      <h4>下一次决策</h4>
+      <p>Agent 基于当下情况给出假设，并匹配过去相似的决策事实，给出更贴合你的建议。</p>
+    </div>
+  </div>
+
+  <footer>人机协作决策闭环 · 原始信息 → 决策事实 → 假设推断 → 结果回填 → 纠偏沉淀</footer>
+</div>
+<script>
+(function(){
+  var r=document.documentElement,b=document.getElementById('tb');
+  try{var s=localStorage.getItem('theme');if(s)r.setAttribute('data-theme',s);}catch(e){}
+  b.onclick=function(){
+    var cur=r.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+    var n=cur==='dark'?'light':'dark';r.setAttribute('data-theme',n);
+    try{localStorage.setItem('theme',n);}catch(e){}
+  };
+})();
+</script>
+</body>
+</html>
